@@ -4,9 +4,9 @@ from collections import deque
 from socket import error as socket_error
 from time import sleep
 
-from thriftpy.thrift import TApplicationException
-from thriftpy.thrift import TClient
-from thriftpy.transport import TTransportException
+from thriftpy2.thrift import TApplicationException
+from thriftpy2.thrift import TClient
+from thriftpy2.transport import TTransportException
 
 logger = logging.getLogger(__name__)
 
