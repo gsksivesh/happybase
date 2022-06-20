@@ -44,6 +44,7 @@ class Table(object):
     This class cannot be instantiated directly; use :py:meth:`Connection.table`
     instead.
     """
+
     def __init__(self, name, connection):
         self.name = name
         self.connection = connection
@@ -584,7 +585,7 @@ class Table(object):
         :rtype: int
         """
         return self.connection.client.atomicIncrement(
-            self.name, row, column, value)
+            self.name, row, column, value, no_retry=True)
 
     def counter_dec(self, row, column, value=1):
         """Atomically decrement (or increments) a counter column.

@@ -7,12 +7,12 @@ HappyBase connection module.
 import logging
 
 import six
-from thriftpy2.thrift import TClient
-from thriftpy2.transport import TBufferedTransport, TFramedTransport, TSocket
-from thriftpy2.protocol import TBinaryProtocol, TCompactProtocol
+from thriftpy.transport import TBufferedTransport, TFramedTransport, TSocket
+from thriftpy.protocol import TBinaryProtocol, TCompactProtocol
 
 from Hbase_thrift import Hbase, ColumnDescriptor
 
+from .client import RecoveringClient
 from .table import Table
 from .util import ensure_bytes, pep8_to_camel_case
 
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 STRING_OR_BINARY = (six.binary_type, six.text_type)
 
-COMPAT_MODES = ('0.90', '0.92', '0.94', '0.96', '0.98')
+COMPAT_MODES = ('0.90', '0.92', '0.94', '0.96')
 THRIFT_TRANSPORTS = dict(
     buffered=TBufferedTransport,
     framed=TFramedTransport,
@@ -33,7 +33,7 @@ THRIFT_PROTOCOLS = dict(
 DEFAULT_HOST = 'localhost'
 DEFAULT_PORT = 9090
 DEFAULT_TRANSPORT = 'buffered'
-DEFAULT_COMPAT = '0.98'
+DEFAULT_COMPAT = '0.96'
 DEFAULT_PROTOCOL = 'binary'
 
 
@@ -43,7 +43,7 @@ class Connection(object):
     The `host` and `port` arguments specify the host name and TCP port
     of the HBase Thrift server to connect to. If omitted or ``None``,
     a connection to the default port on ``localhost`` is made. If
-    specified, the `timeout` argument specifies the socket timeout in
+    specifed, the `timeout` argument specifies the socket timeout in
     milliseconds.
 
     If `autoconnect` is `True` (the default) the connection is made
@@ -53,7 +53,7 @@ class Connection(object):
     The optional `table_prefix` and `table_prefix_separator` arguments
     specify a prefix and a separator string to be prepended to all table
     names, e.g. when :py:meth:`Connection.table` is invoked. For
-    example, if `table_prefix` is ``myproject``, all tables will
+    example, if `table_prefix` is ``myproject``, all tables tables will
     have names like ``myproject_XYZ``.
 
     The optional `compat` argument sets the compatibility level for
@@ -105,6 +105,7 @@ class Connection(object):
     :param str compat: Compatibility mode (optional)
     :param str transport: Thrift transport mode (optional)
     """
+
     def __init__(self, host=DEFAULT_HOST, port=DEFAULT_PORT, timeout=None,
                  autoconnect=True, table_prefix=None,
                  table_prefix_separator=b'_', compat=DEFAULT_COMPAT,
@@ -151,11 +152,13 @@ class Connection(object):
 
     def _refresh_thrift_client(self):
         """Refresh the Thrift socket, transport, and client."""
-        socket = TSocket(host=self.host, port=self.port, socket_timeout=self.timeout)
+        socket = TSocket(self.host, self.port)
+        if self.timeout is not None:
+            socket.set_timeout(self.timeout)
 
         self.transport = self._transport_class(socket)
         protocol = self._protocol_class(self.transport, decode_response=False)
-        self.client = TClient(Hbase, protocol)
+        self.client = RecoveringClient(Hbase, protocol, connection=self)
 
     def _table_name(self, name):
         """Construct a table name by optionally adding a table name prefix."""
@@ -306,7 +309,7 @@ class Connection(object):
 
             column_descriptors.append(ColumnDescriptor(**kwargs))
 
-        self.client.createTable(name, column_descriptors)
+        self.client.createTable(name, column_descriptors, no_retry=True)
 
     def delete_table(self, name, disable=False):
         """Delete the specified table.
@@ -325,7 +328,7 @@ class Connection(object):
             self.disable_table(name)
 
         name = self._table_name(name)
-        self.client.deleteTable(name)
+        self.client.deleteTable(name, no_retry=True)
 
     def enable_table(self, name):
         """Enable the specified table.
@@ -333,7 +336,7 @@ class Connection(object):
         :param str name: The table name
         """
         name = self._table_name(name)
-        self.client.enableTable(name)
+        self.client.enableTable(name, no_retry=True)
 
     def disable_table(self, name):
         """Disable the specified table.
@@ -341,7 +344,7 @@ class Connection(object):
         :param str name: The table name
         """
         name = self._table_name(name)
-        self.client.disableTable(name)
+        self.client.disableTable(name, no_retry=True)
 
     def is_table_enabled(self, name):
         """Return whether the specified table is enabled.
@@ -362,6 +365,6 @@ class Connection(object):
         """
         name = self._table_name(name)
         if major:
-            self.client.majorCompact(name)
+            self.client.majorCompact(name, no_retry=True)
         else:
-            self.client.compact(name)
+            self.client.compact(name, no_retry=True)
